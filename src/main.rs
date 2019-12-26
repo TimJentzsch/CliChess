@@ -1,5 +1,6 @@
 mod cli_board;
 mod chess_player;
+mod mcts;
 
 use pleco::*;
 use cli_board::{CliBoard, BoardState};
@@ -18,7 +19,7 @@ fn main() {
     // let mut cli_board = CliBoard::from_fen(en_passent_fen).unwrap();
 
     let mut white_player = HumanPlayer::new();
-    let mut black_player = StoneFish::new(Player::Black, 10, 20);
+    let mut black_player = StoneFish::new(Player::Black, &cli_board.board());
     // let mut black_player = HumanPlayer::new();
 
     let mut time = Duration::from_secs(10);
