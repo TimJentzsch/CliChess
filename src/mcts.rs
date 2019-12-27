@@ -278,9 +278,9 @@ impl MCTree {
         let width = self.children.len();
         let wins = self.wins;
         let playouts = self.playouts;
-        let winrate = (1. - self.play_value()) * 100.;
+        let winrate = (1. - self.play_value()) * 100.; // Inverted for this players
         let s = format!(
-            "s:{}, h:{}, w:{} {}/{} ({:05.1}%)",
+            "s:{}, h:{}, w:{}, {}/{} ({:05.1}%)",
             size, height, width, wins, playouts, winrate
         );
 
@@ -289,13 +289,20 @@ impl MCTree {
             Option::Some(mv) => {
                 // Best move info
                 let node = &mv.node;
-                let mv_wins = node.wins;
                 let mv_playouts = node.playouts;
+                let mv_wins = mv_playouts - node.wins; // Inverted for this player
+                // Calculate avg winrate of the available moves
+                let mut sum_winrate = 0.;
+                for child in &self.children {
+                    sum_winrate += child.node.play_value();
+                }
+                let avg_winrate = sum_winrate / width as f32 * 100.;
                 let mv_winrate = node.play_value() * 100.;
                 let win_dif = mv_winrate - winrate;
+                let avg_win_dif = mv_winrate - avg_winrate;
                 format!(
-                    "{} | {}/{} ({:05.1}%) => {:+.1}%",
-                    s, mv_wins, mv_playouts, mv_winrate, win_dif
+                    "{} | {}/{} ({:05.1}%) => {:+.1}% | avg {:+.1}%",
+                    s, mv_wins, mv_playouts, mv_winrate, win_dif, avg_win_dif
                 )
             }
             Option::None => s,
