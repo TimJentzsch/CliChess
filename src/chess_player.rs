@@ -75,28 +75,35 @@ impl StoneFish {
         }
     }
 
+    fn apply_root_move(&mut self, apply_move: BitMove)-> usize {
+        for _ in 0..self.root.children.len() {
+            let mv_node = self.root.children.pop().unwrap();
+            let mv = mv_node.mv;
+            if apply_move == mv {
+                // Found appropriate move
+                self.root = mv_node.node;
+                return self.root.size();
+            }
+        }
+        return 0;
+    }
+
     /// Update the root node for the new situation
-    fn update_root(&mut self, board: &Board) {
+    fn update_root(&mut self, board: &Board) -> usize {
         let last_mv_opt = board.last_move();
 
         match last_mv_opt {
-            Option::None => println!("No last move.."),
+            Option::None => (),
             Option::Some(last_mv) => {
-                for mv_node in &self.root.children {
-                    let mv = mv_node.mv;
-                    if last_mv == mv {
-                        // Found appropriate move
-                        self.root = mv_node.node.clone();
-                        println!("Nodes saved: {}", self.root.size());
-                        return;
-                    }
+                let result = self.apply_root_move(last_mv);
+                if result != 0 {
+                    return result;
                 }
-                println!("No equal move found..");
             }
         }
 
-        println!("Regenerating root");
         self.root = MCTree::new(self.player, &board);
+        return 0;
     }
 }
 
@@ -116,17 +123,7 @@ impl ChessPlayer for StoneFish {
         let mv_node = self.root.best_move().unwrap();
         let mv = mv_node.mv;
 
-        println!("Nodes: {}", self.root.size());
-        /* println!(
-            "{}/{} ({}) | {}/{} ({:05.1}%) | {}s",
-            self.root.playouts,
-            self.root.children.len(),
-            self.root.playouts / self.root.children.len(),
-            node.play_value(),
-            node.playouts,
-            node.play_value() * 100.,
-            now.elapsed().unwrap().as_secs()
-        ); */
+        self.apply_root_move(mv);
 
         mv
     }

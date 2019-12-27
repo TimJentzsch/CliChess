@@ -1,7 +1,9 @@
-use pleco::{Board, BitMove, MoveList, Player};
+use pleco::{BitMove, Board, MoveList, Player};
 
-use std::cmp::Ordering;
 use rand::{self, rngs::ThreadRng, Rng};
+use std::cmp::Ordering;
+
+const SIMULATION_STEPS: usize = 5;
 
 /// The end of a game
 pub enum PlayEnd {
@@ -151,8 +153,8 @@ impl MCTree {
         MCTree {
             player: player,
             state: state,
-            wins: 0, // No wins yet
-            playouts: 0, // No playouts yet
+            wins: 0,              // No wins yet
+            playouts: 0,          // No playouts yet
             children: Vec::new(), // No children yet
         }
     }
@@ -167,8 +169,30 @@ impl MCTree {
         size
     }
 
+    /// Determine the height of the tree
+    pub fn height(&self) -> usize {
+        if self.is_leaf() {
+            // A leaf node has height 0
+            0
+        } else {
+            // Determine the maximum height of its child nodes
+            let mut max_height = 0;
+            for child in &self.children {
+                if child.node.height() > max_height {
+                    max_height = child.node.height();
+                }
+            }
+            1 + max_height
+        }
+    }
+
     /// Gets the best move, if available
     pub fn best_move(&mut self) -> Option<&MCTreeMove> {
+        /* for n in &self.children {
+            print!("{}, ", n.node.select_value(self.playouts));
+        }
+        println!(); */
+
         if self.is_leaf() {
             // No moves available
             Option::None
@@ -176,6 +200,16 @@ impl MCTree {
             // Select the most promising move
             let playouts = self.playouts;
             self.children.sort_by(|a, b| a.cmp_play_value(b, playouts));
+            let best_move = self.children.last().unwrap();
+            println!(
+                "s: {} h: {} p: {} | {}",
+                self.size(),
+                self.height(),
+                self.playouts,
+                best_move.node.to_string()
+            );
+            // self.state.pretty_print();
+            // best_move.node.state.pretty_print();
             Option::Some(self.children.last().unwrap())
         }
     }
@@ -189,6 +223,10 @@ impl MCTree {
         }
     }
 
+    pub fn to_string(&self) -> String {
+        format!("{}/{} ({:05.1}%)", self.wins, self.playouts, self.play_value() * 100.)
+    }
+
     /// Selects the next node to expand
     pub fn select(&mut self) -> PlayEnd {
         if self.is_leaf() {
@@ -199,7 +237,8 @@ impl MCTree {
         } else {
             // Select the most promising child node
             let playouts = self.playouts;
-            self.children.sort_by(|a, b| a.cmp_select_value(b, playouts));
+            self.children
+                .sort_by(|a, b| a.cmp_select_value(b, playouts));
             let node = &mut self.children.last_mut().unwrap().node;
             // Update node with the result
             let result = match node.select() {
@@ -221,12 +260,14 @@ impl MCTree {
             PlayResult::Moves(moves) => {
                 // Generate child nodes
                 for mv in moves {
-                    let node = MCTreeMove::new(mv, self.player, &self.state);
+                    let mut new_state = self.state.clone();
+                    new_state.apply_move(mv);
+                    let node = MCTreeMove::new(mv, self.player, &new_state);
                     self.children.push(node);
                 }
                 // Make a simulation step and backtrack the result
                 self.simulate()
-            },
+            }
             // Backtrack result
             PlayResult::End(end) => end,
         }
@@ -245,10 +286,9 @@ impl MCTree {
                     let mut rng = rand::thread_rng();
                     let rnd = rng.gen_range(0 as usize, moves.len());
                     let mv = moves[rnd];
-        
                     // Playout with that move
                     board.apply_move(mv);
-                },
+                }
                 PlayResult::End(end) => return end,
             }
         }
@@ -261,8 +301,12 @@ impl MCTree {
 
     /// Determines how valuable it is to play this move.
     pub fn play_value(&self) -> f32 {
-        // Determine 'winrate'
-        (self.wins as f32) / (self.playouts as f32)
+        if self.playouts == 0 {
+            0.5
+        } else {
+            // Determine 'winrate'
+            (self.wins as f32) / (self.playouts as f32)
+        }
     }
 
     /// Determines how valuable it is to expand this node.
