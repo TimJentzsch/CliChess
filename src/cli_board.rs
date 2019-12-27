@@ -46,8 +46,8 @@ impl CliMove {
         let player = board.turn();
         let check_sq = if board.gives_check(mv) {
             match player {
-                White => Some(board.king_sq(Player::Black)),
-                Black => Some(board.king_sq(Player::White))
+                Player::White => Some(board.king_sq(Player::Black)),
+                Player::Black => Some(board.king_sq(Player::White))
             }
         } else {
             None
