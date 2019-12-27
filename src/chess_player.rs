@@ -1,3 +1,4 @@
+use super::mcts::{MCTree, MCTreeMove};
 use pleco::{BitMove, Board, MoveList, Player};
 use rand::{self, rngs::ThreadRng, Rng};
 use std::cmp::Ordering;
@@ -7,7 +8,6 @@ use std::sync::mpsc::channel;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime};
-use super::mcts::{MCTree, MCTreeMove};
 
 pub trait ChessPlayer {
     fn next_move(&mut self, board: &Board, time: Duration) -> BitMove;
@@ -75,7 +75,7 @@ impl StoneFish {
         }
     }
 
-    fn apply_root_move(&mut self, apply_move: BitMove)-> usize {
+    fn apply_root_move(&mut self, apply_move: BitMove) -> usize {
         for _ in 0..self.root.children.len() {
             let mv_node = self.root.children.pop().unwrap();
             let mv = mv_node.mv;
@@ -118,6 +118,8 @@ impl ChessPlayer for StoneFish {
         while now.elapsed().unwrap() < time {
             self.root.select();
         }
+
+        println!("{}", self.root.info_str());
 
         self.root.assert_valid();
 

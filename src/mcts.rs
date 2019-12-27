@@ -275,10 +275,14 @@ impl MCTree {
         // Self info
         let size = self.size();
         let height = self.height();
+        let width = self.children.len();
         let wins = self.wins;
         let playouts = self.playouts;
-        let winrate = self.play_value() * 100.;
-        let s = format!("s:{}, h:{}, {}/{}({:5.1}%", size, height, wins, playouts, winrate);
+        let winrate = (1. - self.play_value()) * 100.;
+        let s = format!(
+            "s:{}, h:{}, w:{} {}/{} ({:05.1}%)",
+            size, height, width, wins, playouts, winrate
+        );
 
         let best_mv = self.best_move();
         match best_mv {
@@ -287,10 +291,14 @@ impl MCTree {
                 let node = &mv.node;
                 let mv_wins = node.wins;
                 let mv_playouts = node.playouts;
-                let mv_winrate = self.play_value() * 100.;
-                format!("{} | {}/{}({}%)", s, mv_wins, mv_playouts, mv_winrate)
+                let mv_winrate = node.play_value() * 100.;
+                let win_dif = mv_winrate - winrate;
+                format!(
+                    "{} | {}/{} ({:05.1}%) => {:+.1}%",
+                    s, mv_wins, mv_playouts, mv_winrate, win_dif
+                )
             }
-            Option::None => s
+            Option::None => s,
         }
     }
 
@@ -338,7 +346,7 @@ impl MCTree {
             "{}/{} ({:05.1}%)",
             self.wins,
             self.playouts,
-            self.play_value() * 100.
+            (1. - self.play_value()) * 100.
         )
     }
 
@@ -466,8 +474,8 @@ impl MCTree {
         if self.playouts == 0 {
             0.5
         } else {
-            // Determine 'winrate'
-            (self.wins as f32) / (self.playouts as f32)
+            // Determine 'winrate', but for the opponent
+            1. - (self.wins as f32) / (self.playouts as f32)
         }
     }
 
