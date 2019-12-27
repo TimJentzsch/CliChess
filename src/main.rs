@@ -46,6 +46,7 @@ fn main() {
         }
 
         let new_time = before.elapsed().unwrap();
+        println!("Time needed: {:02}m:{:02}s", new_time.as_secs() / 60, new_time.as_secs() % 60);
         
         time = if new_time < min_time {
             min_time

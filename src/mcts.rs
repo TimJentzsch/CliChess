@@ -5,6 +5,20 @@ use std::cmp::Ordering;
 
 const SIMULATION_STEPS: usize = 5;
 
+/// The result of a simulation step
+pub struct SimResult {
+    wins: usize,
+    playouts: usize,
+}
+
+impl SimResult {
+    /// Invert the simulation result
+    pub fn invert(&self) -> SimResult{
+        let losses = self.playouts - self.wins;
+        SimResult{wins: losses, playouts: self.playouts}
+    }
+}
+
 /// The end of a game
 pub enum PlayEnd {
     Win,
@@ -215,12 +229,9 @@ impl MCTree {
     }
 
     /// Updates the current node with the given result
-    pub fn update(&mut self, end: &PlayEnd) {
-        self.playouts += 1;
-        match end {
-            PlayEnd::Win => self.wins += 1,
-            PlayEnd::Loss => (),
-        }
+    pub fn update(&mut self, result: &SimResult) {
+        self.playouts += result.playouts;
+        self.wins += result.wins;
     }
 
     pub fn to_string(&self) -> String {
@@ -228,11 +239,12 @@ impl MCTree {
     }
 
     /// Selects the next node to expand
-    pub fn select(&mut self) -> PlayEnd {
+    pub fn select(&mut self) -> SimResult {
         if self.is_leaf() {
             // Leaf nodes can be expanded
             let result = self.expand();
             self.update(&result);
+            // Backtrack result
             result
         } else {
             // Select the most promising child node
@@ -240,12 +252,9 @@ impl MCTree {
             self.children
                 .sort_by(|a, b| a.cmp_select_value(b, playouts));
             let node = &mut self.children.last_mut().unwrap().node;
-            // Update node with the result
-            let result = match node.select() {
-                // Swap the result
-                PlayEnd::Win => PlayEnd::Loss,
-                PlayEnd::Loss => PlayEnd::Win,
-            };
+            // The child node has the opposite player, invert the result
+            let result = node.select().invert();
+            // Update the node
             self.update(&result);
             // Backtrack result
             result
@@ -253,9 +262,10 @@ impl MCTree {
     }
 
     /// Expands and update the selected node
-    pub fn expand(&mut self) -> PlayEnd {
+    pub fn expand(&mut self) -> SimResult {
         let play_result = PlayResult::get_result(&self.state, self.player);
 
+        // Generate child nodes if necessary
         match play_result {
             PlayResult::Moves(moves) => {
                 // Generate child nodes
@@ -265,33 +275,47 @@ impl MCTree {
                     let node = MCTreeMove::new(mv, self.player, &new_state);
                     self.children.push(node);
                 }
-                // Make a simulation step and backtrack the result
-                self.simulate()
             }
             // Backtrack result
-            PlayResult::End(end) => end,
+            PlayResult::End(end) => (),
         }
+        // Make a simulation step and backtrack the result
+        self.simulate()
     }
 
     /// Makes a simulation step for this move
-    pub fn simulate(&self) -> PlayEnd {
+    pub fn simulate(&self) -> SimResult {
         let mut board = self.state.clone();
-        loop {
-            // Check for game end
-            let result = PlayResult::get_result(&board, self.player);
+        let mut playouts = 0;
+        let mut wins = 0;
+        while playouts < SIMULATION_STEPS {
+            // Simulate
+            loop {
+                // Check for game end
+                let result = PlayResult::get_result(&board, self.player);
 
-            match result {
-                PlayResult::Moves(moves) => {
-                    // Choose random move
-                    let mut rng = rand::thread_rng();
-                    let rnd = rng.gen_range(0 as usize, moves.len());
-                    let mv = moves[rnd];
-                    // Playout with that move
-                    board.apply_move(mv);
+                match result {
+                    PlayResult::Moves(moves) => {
+                        // Choose random move
+                        let mut rng = rand::thread_rng();
+                        let rnd = rng.gen_range(0 as usize, moves.len());
+                        let mv = moves[rnd];
+                        // Playout with that move
+                        board.apply_move(mv);
+                    }
+                    PlayResult::End(end) => {
+                        // The game ended, save the results
+                        playouts += 1;
+                        match end {
+                            PlayEnd::Win => wins += 1,
+                            PlayEnd::Loss => (),
+                        }
+                        break;
+                    },
                 }
-                PlayResult::End(end) => return end,
             }
         }
+        SimResult{playouts: playouts, wins: playouts}
     }
 
     /// Determines if the node is a leaf node.
