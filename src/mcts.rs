@@ -46,10 +46,12 @@ impl PlayResult {
         } else if moves.len() == 0 {
             if board.checkmate() {
                 // One player wins
-                match board.turn() {
+                if player == board.turn() {
                     // The player is in checkmate, the player loses
-                    player => PlayResult::End(PlayEnd::Loss),
-                    _ => PlayResult::End(PlayEnd::Win),
+                    PlayResult::End(PlayEnd::Loss)
+                } else {
+                    // The opponent is in checkmate, the player wins
+                    PlayResult::End(PlayEnd::Win)
                 }
             } else {
                 // The game is a draw
