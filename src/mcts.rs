@@ -1,7 +1,10 @@
 use pleco::{BitMove, Board, MoveList, Player};
 
 use rand::{self, rngs::ThreadRng, Rng};
+
 use std::cmp::Ordering;
+use std::sync::{mpsc};
+use std::thread;
 
 const SIMULATION_STEPS: usize = 5;
 
@@ -285,37 +288,55 @@ impl MCTree {
 
     /// Makes a simulation step for this move
     pub fn simulate(&self) -> SimResult {
-        let mut board = self.state.clone();
-        let mut playouts = 0;
-        let mut wins = 0;
-        while playouts < SIMULATION_STEPS {
-            // Simulate
-            loop {
-                // Check for game end
-                let result = PlayResult::get_result(&board, self.player);
+        let playouts = SIMULATION_STEPS;
+        let (tx, rx) = mpsc::channel();
+        // Perform playouts in parallel
+        for _ in 0..playouts {
+            let board = self.state.clone();
+            let player = self.player;
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let result = MCTree::single_playout(board, player);
+                tx.send(result).unwrap();
+            });
+        }
 
-                match result {
-                    PlayResult::Moves(moves) => {
-                        // Choose random move
-                        let mut rng = rand::thread_rng();
-                        let rnd = rng.gen_range(0 as usize, moves.len());
-                        let mv = moves[rnd];
-                        // Playout with that move
-                        board.apply_move(mv);
-                    }
-                    PlayResult::End(end) => {
-                        // The game ended, save the results
-                        playouts += 1;
-                        match end {
-                            PlayEnd::Win => wins += 1,
-                            PlayEnd::Loss => (),
-                        }
-                        break;
-                    },
-                }
+        let mut wins = 0;
+
+        // Aggregate results
+        for _ in 0..playouts {
+            let result = rx.recv().unwrap();
+            match result {
+                PlayEnd::Win => wins += 1,
+                PlayEnd::Loss => (),
             }
         }
-        SimResult{playouts: playouts, wins: playouts}
+        SimResult{playouts: playouts, wins: wins}
+    }
+
+    /// Performs a singular playout
+    fn single_playout(board: Board, player: Player) -> PlayEnd {
+        let mut board = board.clone();
+        // Simulate
+        loop {
+            // Check for game end
+            let result = PlayResult::get_result(&board, player);
+
+            match result {
+                PlayResult::Moves(moves) => {
+                    // Choose random move
+                    let mut rng = rand::thread_rng();
+                    let rnd = rng.gen_range(0 as usize, moves.len());
+                    let mv = moves[rnd];
+                    // Playout with that move
+                    board.apply_move(mv);
+                }
+                PlayResult::End(end) => {
+                    // The game ended, return the results
+                    return end;
+                },
+            }
+        }
     }
 
     /// Determines if the node is a leaf node.
