@@ -127,7 +127,7 @@ impl Clone for MCTreeMove {
 }
 
 impl MCTreeMove {
-    /// Creates a new MCTree
+    /// Creates a new MCTreeMove
     pub fn new(mv: BitMove, player: Player, state: &Board) -> MCTreeMove {
         // The new player is the opposite player
         let new_player = match player {
@@ -141,7 +141,7 @@ impl MCTreeMove {
         }
     }
     /// Compares the play value of the two moves
-    pub fn cmp_play_value(&self, other: &MCTreeMove, parent_playouts: usize) -> Ordering {
+    pub fn cmp_play_value(&self, other: &MCTreeMove) -> Ordering {
         let self_value = self.node.play_value();
         let other_value = other.node.play_value();
 
@@ -152,6 +152,19 @@ impl MCTreeMove {
         } else {
             Ordering::Equal
         }
+    }
+
+    /// Determines the move with the maximum play value
+    pub fn max_play(moves: &Vec<MCTreeMove>) -> Option<&MCTreeMove> {
+        moves.iter().max_by(|a, b| a.cmp_play_value(b))
+    }
+
+    /// Determines the move with the maximum play value
+    pub fn max_play_mut(
+        moves: &mut Vec<MCTreeMove>,
+        parent_playouts: usize,
+    ) -> Option<&mut MCTreeMove> {
+        moves.iter_mut().max_by(|a, b| a.cmp_play_value(b))
     }
 
     /// Compares the selection value of the two plays
@@ -166,6 +179,23 @@ impl MCTreeMove {
         } else {
             Ordering::Equal
         }
+    }
+
+    /// Determines the move with the maximum select value
+    pub fn max_select(moves: &Vec<MCTreeMove>, parent_playouts: usize) -> Option<&MCTreeMove> {
+        moves
+            .iter()
+            .max_by(|a, b| a.cmp_select_value(b, parent_playouts))
+    }
+
+    /// Determines the move with the maximum select value
+    pub fn max_select_mut(
+        moves: &mut Vec<MCTreeMove>,
+        parent_playouts: usize,
+    ) -> Option<&mut MCTreeMove> {
+        moves
+            .iter_mut()
+            .max_by(|a, b| a.cmp_select_value(b, parent_playouts))
     }
 }
 
@@ -235,10 +265,32 @@ impl MCTree {
             }
             assert_eq!(
                 true,
-                self.wins >= sum_result.wins &&
-                self.playouts >= sum_result.playouts,
+                self.wins >= sum_result.wins && self.playouts >= sum_result.playouts,
                 "This node must have eq or more playouts than its children!"
             );
+        }
+    }
+
+    pub fn info_str(&self) -> String {
+        // Self info
+        let size = self.size();
+        let height = self.height();
+        let wins = self.wins;
+        let playouts = self.playouts;
+        let winrate = self.play_value() * 100.;
+        let s = format!("s:{}, h:{}, {}/{}({:5.1}%", size, height, wins, playouts, winrate);
+
+        let best_mv = self.best_move();
+        match best_mv {
+            Option::Some(mv) => {
+                // Best move info
+                let node = &mv.node;
+                let mv_wins = node.wins;
+                let mv_playouts = node.playouts;
+                let mv_winrate = self.play_value() * 100.;
+                format!("{} | {}/{}({}%)", s, mv_wins, mv_playouts, mv_winrate)
+            }
+            Option::None => s
         }
     }
 
@@ -270,31 +322,9 @@ impl MCTree {
     }
 
     /// Gets the best move, if available
-    pub fn best_move(&mut self) -> Option<&MCTreeMove> {
-        /* for n in &self.children {
-            print!("{}, ", n.node.select_value(self.playouts));
-        }
-        println!(); */
-
-        if self.is_leaf() {
-            // No moves available
-            Option::None
-        } else {
-            // Select the most promising move
-            let playouts = self.playouts;
-            self.children.sort_by(|a, b| a.cmp_play_value(b, playouts));
-            let best_move = self.children.last().unwrap();
-            println!(
-                "s: {} h: {} p: {} | {}",
-                self.size(),
-                self.height(),
-                self.playouts,
-                best_move.node.to_string()
-            );
-            // self.state.pretty_print();
-            // best_move.node.state.pretty_print();
-            Option::Some(self.children.last().unwrap())
-        }
+    pub fn best_move(&self) -> Option<&MCTreeMove> {
+        // Select the most promising move
+        MCTreeMove::max_play(&self.children)
     }
 
     /// Updates the current node with the given result
@@ -322,11 +352,9 @@ impl MCTree {
         } else {
             // Select the most promising child node
             let playouts = self.playouts;
-            self.children
-                .sort_by(|a, b| a.cmp_select_value(b, playouts));
-            let node = &mut self.children.last_mut().unwrap().node;
+            let best_selection = MCTreeMove::max_select_mut(&mut self.children, playouts).unwrap();
             // The child node has the opposite player, invert the result
-            let result = node.select().invert();
+            let result = best_selection.node.select().invert();
             // Update the node
             self.update(&result);
             // Backtrack result
@@ -366,9 +394,7 @@ impl MCTree {
                 result
             }
             // This node is the end of the game, simulate it
-            PlayResult::End(_) => {
-                self.simulate()
-            },
+            PlayResult::End(_) => self.simulate(),
         }
     }
 
