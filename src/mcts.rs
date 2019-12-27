@@ -6,7 +6,8 @@ use std::cmp::Ordering;
 use std::sync::{mpsc};
 use std::thread;
 
-const SIMULATION_STEPS: usize = 5;
+const PARALLEL_SIMULATIONS: usize = 5;
+const PARALLEL_PLAYOUTS: usize = 5;
 
 /// The result of a simulation step
 pub struct SimResult {
@@ -272,6 +273,7 @@ impl MCTree {
 
         // Generate child nodes if necessary
         match play_result {
+            // There are still moves to make
             PlayResult::Moves(moves) => {
                 // Generate child nodes
                 for mv in moves {
@@ -280,17 +282,27 @@ impl MCTree {
                     let node = MCTreeMove::new(mv, self.player, &new_state);
                     self.children.push(node);
                 }
+                // Perform simulations
+                let mut result = SimResult{wins: 0, playouts: 0};
+                let mut rng = rand::thread_rng();
+                for _ in 0..PARALLEL_SIMULATIONS {
+                    // Select a child node for simulation
+                    let rnd = rng.gen_range(0 as usize, self.children.len());
+                    // Make a simulation step
+                    let child_result = self.children[rnd].node.simulate().invert();
+                    result.wins += child_result.wins;
+                    result.playouts += child_result.playouts;
+                }
+                result
             }
-            // Backtrack result
-            PlayResult::End(end) => (),
+            // This node is the end of the game, simulate it
+            PlayResult::End(_) => self.simulate(),
         }
-        // Make a simulation step and backtrack the result
-        self.simulate()
     }
 
     /// Makes a simulation step for this move
     pub fn simulate(&self) -> SimResult {
-        let playouts = SIMULATION_STEPS;
+        let playouts = PARALLEL_PLAYOUTS;
         let (tx, rx) = mpsc::channel();
         // Perform playouts in parallel
         for _ in 0..playouts {
