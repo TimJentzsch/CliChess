@@ -2,13 +2,15 @@ use pleco::{BitMove, Board, MoveList, Player};
 
 use rand::{self, rngs::ThreadRng, Rng};
 
-use std::cmp::Ordering;
-use std::sync::{mpsc};
+use std::cmp::{Ordering, PartialEq};
+use std::ops::{Add, AddAssign};
+use std::sync::mpsc;
 use std::thread;
 
 const PARALLEL_SIMULATIONS: usize = 5;
 const PARALLEL_PLAYOUTS: usize = 5;
 
+#[derive(Debug)]
 /// The result of a simulation step
 pub struct SimResult {
     wins: usize,
@@ -17,9 +19,38 @@ pub struct SimResult {
 
 impl SimResult {
     /// Invert the simulation result
-    pub fn invert(&self) -> SimResult{
+    pub fn invert(&self) -> SimResult {
         let losses = self.playouts - self.wins;
-        SimResult{wins: losses, playouts: self.playouts}
+        SimResult {
+            wins: losses,
+            playouts: self.playouts,
+        }
+    }
+}
+
+impl PartialEq for SimResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.playouts == other.playouts && self.wins == other.wins
+    }
+}
+
+impl Add for SimResult {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            wins: self.wins + other.wins,
+            playouts: self.playouts + other.playouts,
+        }
+    }
+}
+
+impl AddAssign for SimResult {
+    fn add_assign(&mut self, other: Self) {
+        *self = Self {
+            wins: self.wins + other.wins,
+            playouts: self.playouts + other.playouts,
+        };
     }
 }
 
@@ -179,6 +210,38 @@ impl MCTree {
         }
     }
 
+    pub fn assert_valid(&self) {
+        if !self.is_leaf() {
+            // Validate playout results
+            let mut sum_result = SimResult {
+                wins: 0,
+                playouts: 0,
+            };
+            for child in &self.children {
+                let node = &child.node;
+                sum_result += SimResult {
+                    wins: node.wins,
+                    playouts: node.playouts,
+                }
+                .invert();
+
+                // Player must be the opposite
+                assert_ne!(
+                    node.player, self.player,
+                    "The player must switch every move!"
+                );
+                // Validate children
+                node.assert_valid();
+            }
+            assert_eq!(
+                true,
+                self.wins >= sum_result.wins &&
+                self.playouts >= sum_result.playouts,
+                "This node must have eq or more playouts than its children!"
+            );
+        }
+    }
+
     /// Determines the size of the tree
     pub fn size(&self) -> usize {
         let mut size = 1;
@@ -241,7 +304,12 @@ impl MCTree {
     }
 
     pub fn to_string(&self) -> String {
-        format!("{}/{} ({:05.1}%)", self.wins, self.playouts, self.play_value() * 100.)
+        format!(
+            "{}/{} ({:05.1}%)",
+            self.wins,
+            self.playouts,
+            self.play_value() * 100.
+        )
     }
 
     /// Selects the next node to expand
@@ -249,7 +317,6 @@ impl MCTree {
         if self.is_leaf() {
             // Leaf nodes can be expanded
             let result = self.expand();
-            self.update(&result);
             // Backtrack result
             result
         } else {
@@ -283,25 +350,30 @@ impl MCTree {
                     self.children.push(node);
                 }
                 // Perform simulations
-                let mut result = SimResult{wins: 0, playouts: 0};
+                let mut result = SimResult {
+                    wins: 0,
+                    playouts: 0,
+                };
                 let mut rng = rand::thread_rng();
                 for _ in 0..PARALLEL_SIMULATIONS {
                     // Select a child node for simulation
                     let rnd = rng.gen_range(0 as usize, self.children.len());
                     // Make a simulation step
                     let child_result = self.children[rnd].node.simulate().invert();
-                    result.wins += child_result.wins;
-                    result.playouts += child_result.playouts;
+                    result += child_result;
                 }
+                self.update(&result);
                 result
             }
             // This node is the end of the game, simulate it
-            PlayResult::End(_) => self.simulate(),
+            PlayResult::End(_) => {
+                self.simulate()
+            },
         }
     }
 
     /// Makes a simulation step for this move
-    pub fn simulate(&self) -> SimResult {
+    pub fn simulate(&mut self) -> SimResult {
         let playouts = PARALLEL_PLAYOUTS;
         let (tx, rx) = mpsc::channel();
         // Perform playouts in parallel
@@ -325,7 +397,12 @@ impl MCTree {
                 PlayEnd::Loss => (),
             }
         }
-        SimResult{playouts: playouts, wins: wins}
+        let result = SimResult {
+            playouts: playouts,
+            wins: wins,
+        };
+        self.update(&result);
+        result
     }
 
     /// Performs a singular playout
@@ -348,7 +425,7 @@ impl MCTree {
                 PlayResult::End(end) => {
                     // The game ended, return the results
                     return end;
-                },
+                }
             }
         }
     }

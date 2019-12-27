@@ -119,6 +119,8 @@ impl ChessPlayer for StoneFish {
             self.root.select();
         }
 
+        self.root.assert_valid();
+
         // Select move to play
         let mv_node = self.root.best_move().unwrap();
         let mv = mv_node.mv;
