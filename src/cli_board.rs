@@ -4,7 +4,6 @@ use pleco::{BitMove, Board, MoveList, Piece, Player, SQ};
 const HEIGHT: u8 = 10;
 const HISTORY_START: u8 = 2;
 
-
 pub enum DrawType {
     Stalemate,
     Rule50,
@@ -47,7 +46,7 @@ impl CliMove {
         let check_sq = if board.gives_check(mv) {
             match player {
                 Player::White => Some(board.king_sq(Player::Black)),
-                Player::Black => Some(board.king_sq(Player::White))
+                Player::Black => Some(board.king_sq(Player::White)),
             }
         } else {
             None
@@ -94,23 +93,38 @@ impl CliMove {
     }
 
     pub fn color_str(&self) -> String {
+        // Add default info
         let piece_str = CliMove::piece_str(self.piece);
         let src_str = self.src.to_string();
         let dest_str = self.dest.to_string();
         let mut s = format!("{} {} -> {}", piece_str, src_str, dest_str);
         match self.promo {
-            None => (),
-            Some(promo) => s = format!("{} {}", s, CliMove::piece_str(promo)),
+            Option::None => (),
+            Option::Some(promo) => s = format!("{} {}", s, CliMove::piece_str(promo)),
         };
+        // Add capture info if applicable
         match self.capture {
-            None => (),
-            Some(capture) => {
+            Option::None => (),
+            Option::Some(capture) => {
                 let cap_str = format! {"{} ", capture.character_lossy()};
                 let cap_str = match capture.player_lossy() {
                     Player::White => cap_str.black().on_bright_red().to_string(),
                     Player::Black => cap_str.white().on_red().to_string(),
                 };
-                s = format!("{} +{}", s, cap_str)
+                s = format!("{} {}", s, cap_str);
+            }
+        }
+        // Add check info if applicable
+        match self.check_sq {
+            Option::None => (),
+            Option::Some(_) => {
+                let king_str = match self.player {
+                    // White player moved, black player in check
+                    Player::White => "k ".black().on_yellow(),
+                    // Black player moved, white player in check
+                    Player::Black => "K ".black().on_bright_yellow(),
+                };
+                s = format!("{} {}", s, king_str);
             }
         }
         s
@@ -122,22 +136,6 @@ impl CliMove {
             Player::White => piece_str.black().on_white().to_string(),
             Player::Black => piece_str.white().on_black().to_string(),
         }
-    }
-
-    pub fn stringify(&self) -> String {
-        let piece_str = self.piece.character_lossy();
-        let src_str = self.src.to_string();
-        let dest_str = self.dest.to_string();
-        let mut s = format!("{} {} -> {}", piece_str, src_str, dest_str);
-        match self.promo {
-            None => (),
-            Some(promo) => s = format!("{} {}", s, promo.character_lossy()),
-        };
-        match self.capture {
-            None => (),
-            Some(capture) => s = format!("{} +{}", s, capture.character_lossy()),
-        }
-        s
     }
 }
 
