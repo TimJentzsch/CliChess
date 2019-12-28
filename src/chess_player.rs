@@ -43,7 +43,7 @@ impl ChessPlayer for HumanPlayer {
     }
 
     fn ponder(&mut self, board: &Board) {
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(Duration::from_millis(500));
     }
 }
 
@@ -67,7 +67,7 @@ impl ChessPlayer for RandomPlayer {
     }
 
     fn ponder(&mut self, board: &Board) {
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(Duration::from_millis(500));
     }
 }
 

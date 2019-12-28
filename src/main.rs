@@ -22,13 +22,13 @@ fn main() {
     // let en_passent_fen = "4k3/pppppppp/8/3P4/8/8/8/RNBQKBNR b KQkq - 0 1";
     // let mut cli_board = CliBoard::from_fen(en_passent_fen).unwrap();
 
-    // let mut white_player = HumanPlayer::new();
-    let white_player = RandomPlayer::new();
+    // let white_player = RandomPlayer::new();
+    let white_player = HumanPlayer::new();
+    // let black_player = HumanPlayer::new();
     let black_player = StoneFish::new(Player::Black, &cli_board.board());
 
     let white_ref = Arc::new(Mutex::new(white_player));
     let black_ref = Arc::new(Mutex::new(black_player));
-    // let mut black_player = HumanPlayer::new();
 
     let mut time = Duration::from_secs(10);
     let min_time = Duration::from_secs(10);
@@ -57,8 +57,6 @@ fn main() {
                                 // Ponder
                                 black_player.ponder(&th_board);
                                 *ponder_cnt += 1;
-
-                                thread::sleep(Duration::from_millis(5));
                             }
                         });
 
@@ -81,8 +79,6 @@ fn main() {
                                 // Ponder
                                 white_player.ponder(&th_board);
                                 *ponder_cnt += 1;
-
-                                thread::sleep(Duration::from_millis(5));
                             }
                         });
                         let mut black_player = black_ref.lock().unwrap();
