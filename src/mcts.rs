@@ -128,16 +128,10 @@ impl Clone for MCTreeMove {
 
 impl MCTreeMove {
     /// Creates a new MCTreeMove
-    pub fn new(mv: BitMove, player: Player, state: &Board) -> MCTreeMove {
-        // The new player is the opposite player
-        let new_player = match player {
-            Player::White => Player::Black,
-            Player::Black => Player::White,
-        };
-
+    pub fn new(mv: BitMove, state: &Board) -> MCTreeMove {
         MCTreeMove {
             mv: mv,
-            node: MCTree::new(new_player, state),
+            node: MCTree::new(state),
         }
     }
     /// Compares the play value of the two moves
@@ -201,8 +195,6 @@ impl MCTreeMove {
 
 /// Monte-Carlo Tree
 pub struct MCTree {
-    /// The player to consider
-    pub player: Player,
     /// The current state
     pub state: Board,
     /// The number of wins for this state
@@ -216,7 +208,6 @@ pub struct MCTree {
 impl Clone for MCTree {
     fn clone(&self) -> Self {
         MCTree {
-            player: self.player,
             state: self.state.clone(),
             wins: self.wins,
             playouts: self.playouts,
@@ -227,17 +218,21 @@ impl Clone for MCTree {
 
 impl MCTree {
     /// Creates a new MCTree
-    pub fn new(player: Player, state: &Board) -> MCTree {
+    pub fn new(state: &Board) -> MCTree {
         // Get the next board
         let state = state.clone();
 
         MCTree {
-            player: player,
             state: state,
             wins: 0,              // No wins yet
             playouts: 0,          // No playouts yet
             children: Vec::new(), // No children yet
         }
+    }
+
+    /// The player to consider for this node
+    pub fn player(&self) -> Player {
+        self.state.turn()
     }
 
     pub fn assert_valid(&self) {
@@ -257,7 +252,7 @@ impl MCTree {
 
                 // Player must be the opposite
                 assert_ne!(
-                    node.player, self.player,
+                    node.player(), self.player(),
                     "The player must switch every move!"
                 );
                 // Validate children
@@ -379,7 +374,7 @@ impl MCTree {
 
     /// Expands and update the selected node
     pub fn expand(&mut self) -> SimResult {
-        let play_result = PlayResult::get_result(&self.state, self.player);
+        let play_result = PlayResult::get_result(&self.state, self.player());
 
         // Generate child nodes if necessary
         match play_result {
@@ -389,7 +384,7 @@ impl MCTree {
                 for mv in moves {
                     let mut new_state = self.state.clone();
                     new_state.apply_move(mv);
-                    let node = MCTreeMove::new(mv, self.player, &new_state);
+                    let node = MCTreeMove::new(mv, &new_state);
                     self.children.push(node);
                 }
                 // Perform simulations
@@ -420,10 +415,9 @@ impl MCTree {
         // Perform playouts in parallel
         for _ in 0..playouts {
             let board = self.state.clone();
-            let player = self.player;
             let tx = tx.clone();
             thread::spawn(move || {
-                let result = MCTree::single_playout(board, player);
+                let result = MCTree::single_playout(board);
                 tx.send(result).unwrap();
             });
         }
@@ -447,8 +441,9 @@ impl MCTree {
     }
 
     /// Performs a singular playout
-    fn single_playout(board: Board, player: Player) -> PlayEnd {
+    fn single_playout(board: Board) -> PlayEnd {
         let mut board = board.clone();
+        let player = board.turn();
         // Simulate
         loop {
             // Check for game end

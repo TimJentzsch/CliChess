@@ -80,11 +80,12 @@ impl StoneFish {
     pub fn new(player: Player, board: &Board) -> StoneFish {
         StoneFish {
             player: player,
-            root: MCTree::new(player, board),
+            root: MCTree::new(board),
         }
     }
 
-    fn apply_root_move(&mut self, apply_move: BitMove) -> usize {
+    /// Tries to apply the given move to the root node
+    fn apply_root_move(&mut self, apply_move: BitMove) -> bool {
         for _ in 0..self.root.children.len() {
             let mv_node = self.root.children.pop().unwrap();
             let mv = mv_node.mv;
@@ -93,32 +94,33 @@ impl StoneFish {
                 self.root = mv_node.node;
                 let result = self.root.size();
                 println!("{} nodes saved.", result);
-                return result;
+                return true;
             }
         }
-        return 0;
+        return false;
     }
 
-    /// Update the root node for the new situation
-    fn update_root(&mut self, board: &Board) -> usize {
+    /// Updates the root node for the new situation
+    fn update_root(&mut self, board: &Board) {
         if *board == self.root.state {
-            return self.root.size();
-        }
+            // The root is already up-to-date
+            return;
+        } else {
+            let last_mv_opt = board.last_move();
 
-        let last_mv_opt = board.last_move();
-
-        match last_mv_opt {
-            Option::None => (),
-            Option::Some(last_mv) => {
-                let result = self.apply_root_move(last_mv);
-                if result != 0 {
-                    return result;
+            match last_mv_opt {
+                Option::Some(last_mv) => {
+                    // Check if the last move can be applied
+                    let result = self.apply_root_move(last_mv);
+                    if !result {
+                        panic!("Last move can't be applied!");
+                    } else {
+                        return;
+                    }
                 }
+                Option::None => panic!("No board move found, but board not up-to-date!"),
             }
         }
-
-        self.root = MCTree::new(self.player, &board);
-        return 0;
     }
 }
 
@@ -126,8 +128,12 @@ impl ChessPlayer for StoneFish {
     fn next_move(&mut self, board: &Board, time: Duration) -> BitMove {
         let now = SystemTime::now();
 
+        assert_eq!(self.player, board.turn(), "Can't move for the opponent!");
+
         // Update root state
         self.update_root(board);
+        assert_eq!(*board, self.root.state, "False move board!");
+        assert_eq!(board.turn(), self.root.player(), "Root player not move player!");
 
         // Calculate while time is remaining
         while now.elapsed().unwrap() < time {
@@ -149,6 +155,9 @@ impl ChessPlayer for StoneFish {
 
     fn ponder(&mut self, board: &Board) {
         self.update_root(board);
+        assert_eq!(*board, self.root.state, "False ponder board!");
+        assert_ne!(self.player, board.turn(), "Must ponder on the opponent's move!");
+        assert_eq!(board.turn(), self.root.player(), "Root player not pondering player!");
         self.root.select();
     }
 }
