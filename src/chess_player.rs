@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime};
 
 pub trait ChessPlayer {
     fn next_move(&mut self, board: &Board, time: Duration) -> BitMove;
+    fn ponder(&mut self, board: &Board);
 }
 
 pub struct HumanPlayer {}
@@ -40,25 +41,33 @@ impl ChessPlayer for HumanPlayer {
             }
         }
     }
+
+    fn ponder(&mut self, board: &Board) {
+        thread::sleep(Duration::from_millis(5));
+    }
 }
 
-pub struct RandomPlayer {
-    rng: ThreadRng,
-}
+pub struct RandomPlayer {}
 
 impl RandomPlayer {
     pub fn new() -> RandomPlayer {
-        let rng = rand::thread_rng();
-        RandomPlayer { rng: rng }
+        RandomPlayer {}
     }
 }
 
 impl ChessPlayer for RandomPlayer {
     fn next_move(&mut self, board: &Board, time: Duration) -> BitMove {
         let all_moves: MoveList = board.generate_moves();
-        let rnd = self.rng.gen_range(0 as usize, all_moves.len());
+        let mut rng = rand::thread_rng();
+        let rnd = rng.gen_range(0 as usize, all_moves.len());
+        let mv = all_moves[rnd];
 
-        all_moves[rnd]
+        thread::sleep(time);
+        mv
+    }
+
+    fn ponder(&mut self, board: &Board) {
+        thread::sleep(Duration::from_millis(5));
     }
 }
 
@@ -82,7 +91,9 @@ impl StoneFish {
             if apply_move == mv {
                 // Found appropriate move
                 self.root = mv_node.node;
-                return self.root.size();
+                let result = self.root.size();
+                println!("{} nodes saved.", result);
+                return result;
             }
         }
         return 0;
@@ -90,6 +101,10 @@ impl StoneFish {
 
     /// Update the root node for the new situation
     fn update_root(&mut self, board: &Board) -> usize {
+        if *board == self.root.state {
+            return self.root.size();
+        }
+
         let last_mv_opt = board.last_move();
 
         match last_mv_opt {
@@ -130,5 +145,10 @@ impl ChessPlayer for StoneFish {
         self.apply_root_move(mv);
 
         mv
+    }
+
+    fn ponder(&mut self, board: &Board) {
+        self.update_root(board);
+        self.root.select();
     }
 }
