@@ -11,7 +11,7 @@ pub struct PlayoutResult {
 }
 
 impl PlayoutResult {
-    pub fn get_count(&self) -> u32 {
+    pub fn count(&self) -> u32 {
         return self.white_wins + self.black_wins + self.draws;
     }
 }
@@ -27,12 +27,41 @@ pub struct TreeNode {
 }
 
 impl TreeNode {
-    /// Determines if the node has not been expanded yet
+    /// Determines if the node has not been expanded yet.
     pub fn is_leaf(&self) -> bool {
-        return self.playout_result.get_count() == 0 || self.board.checkmate();
+        self.playout_result.count() == 0 || self.board.checkmate()
+    }
+
+    /// Get the player whose turn it is to move.
+    pub fn turn(&self) -> Player {
+        self.board.turn()
+    }
+
+    /// Determines the value of selection of this node.
+    pub fn select_value(&self, total_playouts: u32) -> f32 {
+        // Node stats
+        let wins = match self.turn() {
+            Player::White => {self.playout_result.white_wins}
+            Player::Black => {self.playout_result.black_wins}
+        };
+        let draws = self.playout_result.draws;
+        let playouts = self.playout_result.count();
+
+        // Exploit moves with a good winrate
+        let exploitation = ((wins as f32) + (draws as f32) / 2.0) / (playouts as f32);
+
+        // Exploration parameter = sqrt(2)
+        let c = 1.41421356;
+
+        // Explore moves with few playouts
+        let exploration = c * ((total_playouts as f32).ln() / (playouts as f32)).sqrt();
+
+        exploitation + exploration
     }
 
     pub fn expand(&mut self) {
+        assert!(self.is_leaf());
+
         let moves = self.board.generate_moves();
 
         let tree_moves: Vec<TreeMove> = moves
@@ -57,6 +86,21 @@ impl TreeNode {
             .collect();
 
         self.moves = tree_moves;
+    }
+
+    pub fn select(&mut self) -> PlayoutResult {
+        if (self.is_leaf()) {
+            // Determine the possible moves
+            self.expand();
+            // Simulate playouts
+            self.simulate()
+        } else {
+            // Select the most promising node to explore
+        }
+    }
+
+    pub fn simulate(&mut self) -> PlayoutResult {
+
     }
 }
 
