@@ -1,6 +1,8 @@
 use pleco::{BitMove, Board, MoveList, Player};
+use std::cmp::Ordering;
 
 /// The result of the playouts a node.
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone)]
 pub struct PlayoutResult {
     /// The number of wins for the white player.
     pub white_wins: u32,
@@ -17,6 +19,7 @@ impl PlayoutResult {
 }
 
 /// A node of the Monte-Carlo-Search-Tree.
+#[derive(Debug, Clone)]
 pub struct TreeNode {
     /// The current state of the board.
     pub board: Board,
@@ -27,7 +30,7 @@ pub struct TreeNode {
 }
 
 impl TreeNode {
-    /// Determines if the node has not been expanded yet.
+    /// Determine if the node has not been expanded yet.
     pub fn is_leaf(&self) -> bool {
         self.playout_result.count() == 0 || self.board.checkmate()
     }
@@ -37,12 +40,17 @@ impl TreeNode {
         self.board.turn()
     }
 
-    /// Determines the value of selection of this node.
+    /// Get the total number of playouts for this node.
+    pub fn playouts(&self) -> u32 {
+        self.playout_result.count()
+    }
+
+    /// Get the value of selection of this node.
     pub fn select_value(&self, total_playouts: u32) -> f32 {
         // Node stats
         let wins = match self.turn() {
-            Player::White => {self.playout_result.white_wins}
-            Player::Black => {self.playout_result.black_wins}
+            Player::White => self.playout_result.white_wins,
+            Player::Black => self.playout_result.black_wins,
         };
         let draws = self.playout_result.draws;
         let playouts = self.playout_result.count();
@@ -59,6 +67,7 @@ impl TreeNode {
         exploitation + exploration
     }
 
+    /// Expand the node to determine the possible moves.
     pub fn expand(&mut self) {
         assert!(self.is_leaf());
 
@@ -88,6 +97,7 @@ impl TreeNode {
         self.moves = tree_moves;
     }
 
+    /// Select the most promising node to explore
     pub fn select(&mut self) -> PlayoutResult {
         if (self.is_leaf()) {
             // Determine the possible moves
@@ -96,18 +106,37 @@ impl TreeNode {
             self.simulate()
         } else {
             // Select the most promising node to explore
+            let best_move = self.moves.iter().max_by(|mv1, mv2| {
+                if mv1.select_value(self.playouts()) < mv2.select_value(self.playouts()) {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            });
+
+            // Propagate the selection until a leaf node is reached
+            best_move.unwrap().select()
         }
     }
 
-    pub fn simulate(&mut self) -> PlayoutResult {
-
-    }
+    pub fn simulate(&mut self) -> PlayoutResult {}
 }
 
 /// A possible move from a node.
+#[derive(Debug, Clone)]
 pub struct TreeMove {
     /// The move resulting in the next node.
     pub mv: BitMove,
     /// The node resulting from the move.
     pub next_node: TreeNode,
+}
+
+impl TreeMove {
+    pub fn select_value(&self, total_playouts: u32) -> f32 {
+        self.next_node.select_value(total_playouts)
+    }
+
+    pub fn select(&self) -> PlayoutResult {
+        self.next_node.select()
+    }
 }
