@@ -1,6 +1,7 @@
 mod chess_player;
 mod cli_board;
 mod mcts;
+mod stonefish;
 
 use chess_player::{ChessPlayer, HumanPlayer, RandomPlayer, StoneFish};
 use cli_board::{BoardState, CliBoard};
