@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::thread;
 
 /// The result of the playouts a node.
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Copy)]
 pub struct PlayoutResult {
     /// The number of wins for the white player.
     pub white_wins: u32,
@@ -126,24 +126,30 @@ impl TreeNode {
 
     /// Select the most promising node to explore
     pub fn select(&mut self) -> PlayoutResult {
-        if self.is_leaf() {
+        let result = if self.is_leaf() {
             // Determine the possible moves
             self.expand();
             // Simulate playouts
             self.simulate()
         } else {
+            let total_playouts = self.playouts();
             // Select the most promising node to explore
-            let best_move = self.moves.iter().max_by(|mv1, mv2| {
-                if mv1.select_value(self.playouts()) < mv2.select_value(self.playouts()) {
+            let best_move = self.moves.iter_mut().max_by(|mv1, mv2| {
+                if mv1.select_value(total_playouts) < mv2.select_value(total_playouts) {
                     Ordering::Less
                 } else {
                     Ordering::Greater
                 }
-            });
+            }).unwrap();
 
             // Propagate the selection until a leaf node is reached
-            best_move.unwrap().select()
-        }
+            best_move.select()
+        };
+
+        // Update playouts
+        self.playout_result += result;
+        // Backtrack
+        result
     }
 
     /// Simulate the value of the given node.
@@ -249,7 +255,7 @@ impl TreeMove {
         self.next_node.select_value(total_playouts)
     }
 
-    pub fn select(&self) -> PlayoutResult {
+    pub fn select(&mut self) -> PlayoutResult {
         self.next_node.select()
     }
 }
