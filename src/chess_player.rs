@@ -71,14 +71,14 @@ impl ChessPlayer for RandomPlayer {
     }
 }
 
-pub struct StoneFish {
+pub struct OldStoneFish {
     player: Player,
     root: MCTree,
 }
 
-impl StoneFish {
-    pub fn new(player: Player, board: &Board) -> StoneFish {
-        StoneFish {
+impl OldStoneFish {
+    pub fn new(player: Player, board: &Board) -> OldStoneFish {
+        OldStoneFish {
             player: player,
             root: MCTree::new(board),
         }
@@ -124,7 +124,7 @@ impl StoneFish {
     }
 }
 
-impl ChessPlayer for StoneFish {
+impl ChessPlayer for OldStoneFish {
     fn next_move(&mut self, board: &Board, time: Duration) -> BitMove {
         let now = SystemTime::now();
 

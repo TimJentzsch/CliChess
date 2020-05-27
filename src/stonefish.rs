@@ -2,9 +2,104 @@ use pleco::{BitMove, Board, MoveList, Player};
 use rand::{self, Rng};
 use std::cmp::Ordering;
 
+use super::ChessPlayer;
+
+use std::time::{Duration, SystemTime};
 use std::ops::{Add, AddAssign};
 use std::sync::mpsc;
 use std::thread;
+
+pub struct StoneFish {
+    player: Player,
+    root: TreeNode,
+}
+
+impl StoneFish {
+    pub fn new(player: Player, board: &Board) -> StoneFish {
+        StoneFish {
+            player: player,
+            root: TreeNode::new(board.clone()),
+        }
+    }
+
+    /// Tries to apply the given move to the root node
+    fn apply_root_move(&mut self, apply_move: BitMove) -> bool {
+        for _ in 0..self.root.moves.len() {
+            let mv_node = self.root.moves.pop().unwrap();
+            let mv = mv_node.mv;
+            if apply_move == mv {
+                // Found appropriate move
+                self.root = mv_node.next_node;
+                // let result = self.root.size();
+                // println!("{} nodes saved.", result);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Updates the root node for the new situation
+    fn update_root(&mut self, board: &Board) {
+        if *board == self.root.board {
+            // The root is already up-to-date
+            return;
+        } else {
+            let last_mv_opt = board.last_move();
+
+            match last_mv_opt {
+                Option::Some(last_mv) => {
+                    // Check if the last move can be applied
+                    let result = self.apply_root_move(last_mv);
+                    if !result {
+                        panic!("Last move can't be applied!");
+                    } else {
+                        return;
+                    }
+                }
+                Option::None => panic!("No board move found, but board not up-to-date!"),
+            }
+        }
+    }
+}
+
+impl ChessPlayer for StoneFish {
+    fn next_move(&mut self, board: &Board, time: Duration) -> BitMove {
+        let now = SystemTime::now();
+
+        assert_eq!(self.player, board.turn(), "Can't move for the opponent!");
+
+        // Update root state
+        self.update_root(board);
+        assert_eq!(*board, self.root.board, "False move board!");
+        assert_eq!(board.turn(), self.root.turn(), "Root player not move player!");
+
+        // Calculate while time is remaining
+        while now.elapsed().unwrap() < time {
+            self.root.select();
+        }
+
+        // println!("{}", self.root.info_str());
+
+        // self.root.assert_valid();
+
+        // Select move to play
+        let mv_node = self.root.best_move();
+        let mv = mv_node.mv;
+
+        self.apply_root_move(mv);
+
+        mv
+    }
+
+    fn ponder(&mut self, board: &Board) {
+        self.update_root(board);
+        assert_eq!(*board, self.root.board, "False ponder board!");
+        assert_ne!(self.player, board.turn(), "Must ponder on the opponent's move!");
+        assert_eq!(board.turn(), self.root.turn(), "Root player not pondering player!");
+        self.root.select();
+    }
+}
+
 
 /// The result of the playouts a node.
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Copy)]
@@ -18,6 +113,18 @@ pub struct PlayoutResult {
 }
 
 impl PlayoutResult {
+    pub fn new(white_wins: u32, black_wins: u32, draws: u32) -> PlayoutResult {
+        PlayoutResult {
+            white_wins,
+            black_wins,
+            draws,
+        }
+    }
+
+    pub fn new_empty() -> PlayoutResult {
+        PlayoutResult::new(0, 0, 0)
+    }
+
     pub fn count(&self) -> u32 {
         return self.white_wins + self.black_wins + self.draws;
     }
@@ -57,6 +164,14 @@ pub struct TreeNode {
 }
 
 impl TreeNode {
+    pub fn new(board: Board) -> TreeNode {
+        TreeNode {
+            board,
+            playout_result: PlayoutResult::new_empty(),
+            moves: vec![],
+        }
+    }
+
     /// Determine if the node has not been expanded yet.
     pub fn is_leaf(&self) -> bool {
         self.playout_result.count() == 0 || self.board.checkmate()
@@ -70,6 +185,35 @@ impl TreeNode {
     /// Get the total number of playouts for this node.
     pub fn playouts(&self) -> u32 {
         self.playout_result.count()
+    }
+
+    pub fn best_move(&self) -> TreeMove {
+        // Select the most promising move to play
+        let best_move = self.moves.iter().max_by(|mv1, mv2| {
+            if mv1.playout_value() < mv2.playout_value() {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }).unwrap();
+
+        best_move.clone()
+    }
+
+    /// Get the value to play this node.
+    pub fn play_value(&self) -> f32 {
+        // Node stats
+        let wins = match self.turn() {
+            Player::White => self.playout_result.white_wins,
+            Player::Black => self.playout_result.black_wins,
+        };
+        let draws = self.playout_result.draws;
+        let playouts = self.playout_result.count();
+
+        // Exploit moves with a good winrate
+        let exploitation = ((wins as f32) + (draws as f32) / 2.0) / (playouts as f32);
+
+        exploitation
     }
 
     /// Get the value of selection of this node.
@@ -108,15 +252,7 @@ impl TreeNode {
 
                 TreeMove {
                     mv: *mv,
-                    next_node: TreeNode {
-                        board: result_board,
-                        playout_result: PlayoutResult {
-                            white_wins: 0,
-                            black_wins: 0,
-                            draws: 0,
-                        },
-                        moves: vec![],
-                    },
+                    next_node: TreeNode::new(result_board),
                 }
             })
             .collect();
@@ -168,7 +304,7 @@ impl TreeNode {
             });
         }
 
-        let mut total_result = PlayoutResult { white_wins: 0, black_wins: 0, draws: 0 };
+        let mut total_result = PlayoutResult::new_empty();
 
         // Aggregate results
         for _ in 0..playouts {
@@ -210,12 +346,12 @@ impl TreeNode {
             if board.checkmate() {
                 return match board.turn() {
                     // White can't move, black wins
-                    Player::White => { PlayoutResult { white_wins: 0, black_wins: 1, draws: 0 } }
+                    Player::White => { PlayoutResult::new(0, 1, 0) }
                     // Black can't move, white wins
-                    Player::Black => { PlayoutResult { white_wins: 1, black_wins: 1, draws: 0 } }
+                    Player::Black => { PlayoutResult::new(1, 0, 0) }
                 }
-            } else if board.rule_50() >= 50 {
-                return PlayoutResult { white_wins: 0, black_wins: 0, draws: 1 } 
+            } else if board.rule_50() >= 50 || board.stalemate() {
+                return PlayoutResult::new(0, 0, 1);
             } else {
                 // Generate moves
                 let moves = board.generate_moves();
@@ -223,8 +359,8 @@ impl TreeNode {
                 assert!(moves.len() > 0);
                 
                 // Chose best move
-                let mut best_value = TreeNode::playout_value(&board, &moves[1]);
-                let mut best_move = moves[1];
+                let mut best_value = TreeNode::playout_value(&board, &moves[0]);
+                let mut best_move = moves[0];
 
                 for i in 1..moves.len() {
                     let value = TreeNode::playout_value(&board, &moves[i]);
@@ -253,6 +389,10 @@ pub struct TreeMove {
 impl TreeMove {
     pub fn select_value(&self, total_playouts: u32) -> f32 {
         self.next_node.select_value(total_playouts)
+    }
+
+    pub fn playout_value(&self) -> f32 {
+        self.next_node.play_value()
     }
 
     pub fn select(&mut self) -> PlayoutResult {

@@ -3,7 +3,8 @@ mod cli_board;
 mod mcts;
 mod stonefish;
 
-use chess_player::{ChessPlayer, HumanPlayer, RandomPlayer, StoneFish};
+use chess_player::{ChessPlayer, HumanPlayer, RandomPlayer, OldStoneFish};
+use stonefish::{StoneFish};
 use cli_board::{BoardState, CliBoard};
 use pleco::*;
 use std::env;
