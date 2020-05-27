@@ -1,5 +1,10 @@
 use pleco::{BitMove, Board, MoveList, Player};
+use rand::{self, Rng};
 use std::cmp::Ordering;
+
+use std::ops::{Add, AddAssign};
+use std::sync::mpsc;
+use std::thread;
 
 /// The result of the playouts a node.
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone)]
@@ -15,6 +20,28 @@ pub struct PlayoutResult {
 impl PlayoutResult {
     pub fn count(&self) -> u32 {
         return self.white_wins + self.black_wins + self.draws;
+    }
+}
+
+impl Add for PlayoutResult {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            white_wins: self.white_wins + other.white_wins,
+            black_wins: self.black_wins + other.black_wins,
+            draws: self.draws + other.draws,
+        }
+    }
+}
+
+impl AddAssign for PlayoutResult {
+    fn add_assign(&mut self, other: Self) {
+        *self = Self {
+            white_wins: self.white_wins + other.white_wins,
+            black_wins: self.black_wins + other.black_wins,
+            draws: self.draws + other.draws,
+        };
     }
 }
 
@@ -99,7 +126,7 @@ impl TreeNode {
 
     /// Select the most promising node to explore
     pub fn select(&mut self) -> PlayoutResult {
-        if (self.is_leaf()) {
+        if self.is_leaf() {
             // Determine the possible moves
             self.expand();
             // Simulate playouts
@@ -119,7 +146,93 @@ impl TreeNode {
         }
     }
 
-    pub fn simulate(&mut self) -> PlayoutResult {}
+    /// Simulate the value of the given node.
+    pub fn simulate(&mut self) -> PlayoutResult {
+        let playouts = 8;
+
+        let (tx, rx) = mpsc::channel();
+
+        // Perform playouts in parallel
+        for _ in 0..playouts {
+            let board = self.board.clone();
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let result = TreeNode::playout(board);
+                tx.send(result).unwrap();
+            });
+        }
+
+        let mut total_result = PlayoutResult { white_wins: 0, black_wins: 0, draws: 0 };
+
+        // Aggregate results
+        for _ in 0..playouts {
+            let result = rx.recv().unwrap();
+            
+            total_result += result;
+        }
+    
+        total_result
+    }
+
+    /// Determine the value to play the given move
+    pub fn playout_value(board: &Board, mv: &BitMove) -> i32 {
+        let mut rng = rand::thread_rng();
+
+        // Exploit good captures
+        let exploitation = match board.captured_piece(*mv) {
+            pleco::PieceType::None => { 0 }
+            pleco::PieceType::P => { 1 }
+            pleco::PieceType::N => { 3 }
+            pleco::PieceType::B => { 3 }
+            pleco::PieceType::R => { 5 }
+            pleco::PieceType::Q => { 9 }
+            pleco::PieceType::K => { 100 }
+            pleco::PieceType::All => { 0 }
+        };
+
+        // Explore other possibilities
+        let exploration = rng.gen_range(0, 40);
+
+        exploitation + exploration
+    }
+
+    // Playout a board semi-randomly
+    pub fn playout(mut board: Board) -> PlayoutResult {
+        // Simulate
+        loop {
+            // Check for game end
+            if board.checkmate() {
+                return match board.turn() {
+                    // White can't move, black wins
+                    Player::White => { PlayoutResult { white_wins: 0, black_wins: 1, draws: 0 } }
+                    // Black can't move, white wins
+                    Player::Black => { PlayoutResult { white_wins: 1, black_wins: 1, draws: 0 } }
+                }
+            } else if board.rule_50() >= 50 {
+                return PlayoutResult { white_wins: 0, black_wins: 0, draws: 1 } 
+            } else {
+                // Generate moves
+                let moves = board.generate_moves();
+                
+                assert!(moves.len() > 0);
+                
+                // Chose best move
+                let mut best_value = TreeNode::playout_value(&board, &moves[1]);
+                let mut best_move = moves[1];
+
+                for i in 1..moves.len() {
+                    let value = TreeNode::playout_value(&board, &moves[i]);
+                    if value > best_value {
+                        best_value = value;
+                        best_move = moves[i];
+                    }
+                }
+
+                // Play the best move
+                board.apply_move(best_move);
+            }
+        }
+    }
 }
 
 /// A possible move from a node.
